@@ -17,7 +17,7 @@ from launch_ros.descriptions import ParameterValue
 TURTLEBOT3_MODEL = os.environ['TURTLEBOT3_MODEL']
 
 # read xml file from path and change the value of the tag
-def add_frame_prefix_to_odom(xml_file_path, frame_prefix):
+def modify_sdf(xml_file_path, namespace, frame_prefix):
     """
         The sdf file of turtlebot3 use gazebo_ros_diff_drive plugin to drive the car 
         and publish odometry.
@@ -49,16 +49,20 @@ def add_frame_prefix_to_odom(xml_file_path, frame_prefix):
         exit()
     
     """
-    change 
-    <plugin name="turtlebot3_diff_drive" filename="libgazebo_ros_diff_drive.so">
-        <odometry_frame>odom</odometry_frame>
-        <robot_base_frame>base_footprint</robot_base_frame>
-    </plugin>
-    to 
-    <plugin name="turtlebot3_diff_drive" filename="libgazebo_ros_diff_drive.so">
-        <odometry_frame>frame_prefix+odom</odometry_frame>
-        <robot_base_frame>frame_prefix+base_footprint</robot_base_frame>
-    </plugin>
+        change
+        ```
+        <plugin name="turtlebot3_diff_drive" filename="libgazebo_ros_diff_drive.so">
+            <odometry_frame>odom</odometry_frame>
+            <robot_base_frame>base_footprint</robot_base_frame>
+        </plugin>
+        ```
+        to
+        ```
+        <plugin name="turtlebot3_diff_drive" filename="libgazebo_ros_diff_drive.so">
+            <odometry_frame>frame_prefix+odom</odometry_frame>
+            <robot_base_frame>frame_prefix+base_footprint</robot_base_frame>
+        </plugin>
+        ```
     """
     model_tag = xml_parsed.find('model')
     for plugin in model_tag.findall('plugin'):
@@ -69,6 +73,36 @@ def add_frame_prefix_to_odom(xml_file_path, frame_prefix):
                 if child.tag == 'robot_base_frame':
                     child.text = frame_prefix + child.text
     
+    """
+        add
+        ```
+        <plugin name="turtlebot3_p3d" filename="libgazebo_ros_p3d.so">
+            <ros>
+                <namespace>namespace</namespace>
+                <remapping>odom:=odom_ground_truth</remapping>
+            </ros>
+            <update_rate>50.0</update_rate>
+            <body_name>base_link</body_name>
+            <gaussian_noise>0.01</gaussian_noise>
+        </plugin>
+        ```
+        to model_tag
+    """
+    plugin_tag = ElementTree.SubElement(model_tag, 'plugin')
+    plugin_tag.set('name', 'turtlebot3_p3d')
+    plugin_tag.set('filename', 'libgazebo_ros_p3d.so')
+    ros_tag = ElementTree.SubElement(plugin_tag, 'ros')
+    namespace_tag = ElementTree.SubElement(ros_tag, 'namespace')
+    namespace_tag.text = namespace
+    remapping_tag = ElementTree.SubElement(ros_tag, 'remapping')
+    remapping_tag.text = 'odom:=odom_ground_truth'
+    update_rate_tag = ElementTree.SubElement(plugin_tag, 'update_rate')
+    update_rate_tag.text = '50.0'
+    body_name_tag = ElementTree.SubElement(plugin_tag, 'body_name')
+    body_name_tag.text = 'base_link'
+    gaussian_noise_tag = ElementTree.SubElement(plugin_tag, 'gaussian_noise')
+    gaussian_noise_tag.text = '0.01'
+
     entity_xml = ElementTree.tostring(xml_parsed)
     return entity_xml
 
@@ -165,7 +199,7 @@ def generate_launch_description():
         frame_prefix = namespace + '_'
 
         # change the sdf file to add frame_prefix to the value of odometry_frame and robot_base_frame
-        entity_xml = add_frame_prefix_to_odom(robot_sdf_file_path, frame_prefix)
+        entity_xml = modify_sdf(robot_sdf_file_path, namespace, frame_prefix)
         # save the temp sdf file
         with open(temp_sdf_file_path_list[i], 'wb') as file:
             file.write(entity_xml)
